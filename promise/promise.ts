@@ -242,8 +242,37 @@ class MyPromise<T> implements Promise<T> {
 			});
 		});
 	}
+
+	static any<T>(values: (T | MyPromise<T>)[]): MyPromise<MyAwaited<T>> {
+		const promiseErrors: any[] = [];
+		let rejectedPromises = 0;
+
+		return new MyPromise((resolve, reject) => {
+			if (values.length === 0) {
+				reject(new AggregateError([], "Values is empty."));
+				return;
+			}
+
+			values.forEach((value, index) => {
+				MyPromise.resolve(value)
+					.then(resolve)
+					.catch((reason) => {
+						rejectedPromises++;
+						promiseErrors[index] = reason;
+						if (rejectedPromises === values.length) {
+							reject(
+								new AggregateError(
+									promiseErrors,
+									"All promises rejected."
+								)
+							);
+						}
+					});
+			});
+		});
+	}
 }
 
 new Promise<string>((resolve, reject) => {}).then();
 
-Promise.race;
+Promise.any;
