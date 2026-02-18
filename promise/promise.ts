@@ -234,8 +234,16 @@ class MyPromise<T> implements Promise<T> {
 			});
 		});
 	}
+
+	static race<T>(values: (T | MyPromise<T>)[]): MyPromise<MyAwaited<T>> {
+		return new MyPromise((resolve, reject) => {
+			values.forEach((value) => {
+				MyPromise.resolve(value).then(resolve, reject);
+			});
+		});
+	}
 }
 
 new Promise<string>((resolve, reject) => {}).then();
 
-Promise.allSettled;
+Promise.race;
