@@ -64,8 +64,7 @@ class MyPromise<T> implements Promise<T> {
 
 			if (
 				value !== null &&
-				typeof value === "object" &&
-				typeof value === "function"
+				(typeof value === "object" || typeof value === "function")
 			) {
 				let then: any;
 				try {
