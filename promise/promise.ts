@@ -17,7 +17,7 @@ type OnRejected<TResult> =
 	| null
 	| undefined;
 
-type OnFinally = (() => void) | null | undefined;
+type OnFinally = (() => unknown) | null | undefined;
 
 type Handler<T> = {
 	onfulfilled?: OnFulfilled<T, any>;
@@ -48,13 +48,24 @@ class MyPromise<T> implements Promise<T> {
 		const resolve: ResolveCallback = (value: T) => {
 			if (this.state !== "pending") return;
 
+			if ((value as any) === this) {
+				reject(
+					new TypeError("A promise cannot be resolved with itself.")
+				);
+				return;
+			}
+
 			if (
 				value !== null &&
 				typeof value === "object" &&
 				"then" in value &&
 				typeof (value as any).then === "function"
 			) {
-				(value as any).then(resolve, reject);
+				try {
+					(value as any).then(resolve, reject);
+				} catch (error) {
+					reject(error);
+				}
 				return;
 			}
 
@@ -163,19 +174,7 @@ class MyPromise<T> implements Promise<T> {
 			return value;
 		}
 
-		return new MyPromise((resolve, reject) => {
-			// checking for thenable
-			if (
-				value !== null &&
-				typeof value === "object" &&
-				"then" in value &&
-				typeof (value as any).then === "function"
-			) {
-				(value as any).then(resolve, reject);
-			} else {
-				resolve(value as T | void);
-			}
-		});
+		return new MyPromise((resolve) => resolve(value as T));
 	}
 
 	static reject<T = never>(reason?: any): MyPromise<T> {
