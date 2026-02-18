@@ -115,7 +115,8 @@ class MyPromise<T> implements Promise<T> {
 
 	finally(onfinally?: OnFinally): MyPromise<T> {
 		const passThroughFulfilled: OnFulfilled<T, any> = (value: unknown) => {
-			return MyPromise.resolve(onfinally?.()).then(() => value);
+			if (!onfinally) return value as T;
+			return MyPromise.resolve(onfinally()).then(() => value);
 		};
 
 		const passThroughRejected: OnRejected<any> = (reason: unknown) => {
@@ -167,8 +168,8 @@ class MyPromise<T> implements Promise<T> {
 	}
 
 	static resolve(): MyPromise<void>;
-	static resolve<T>(value: T): MyPromise<T>;
 	static resolve<T>(value: MyPromise<T>): MyPromise<MyAwaited<T>>;
+	static resolve<T>(value: T): MyPromise<T>;
 	static resolve<T>(value?: T): MyPromise<T | void> {
 		if (value instanceof MyPromise) {
 			return value;
