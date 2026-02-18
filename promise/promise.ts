@@ -5,7 +5,7 @@ type PromiseCallback = (
 	reject: RejectCallback
 ) => void;
 
-type PromiseState = "pending" | "fullfilled" | "rejected";
+type PromiseState = "pending" | "fulfilled" | "rejected";
 
 type OnFulfilled<T, TResult> =
 	| ((value: T) => TResult | PromiseLike<TResult>)
@@ -26,6 +26,17 @@ type Handler<T> = {
 	reject: RejectCallback;
 };
 
+/**
+ * Recursively unwraps the "awaited type" of a type. Non-promise "thenables" should resolve to `never`. This emulates the behavior of `await`.
+ */
+type MyAwaited<T> = T extends null | undefined
+	? T // special case for `null | undefined` when not in `--strictNullChecks` mode
+	: T extends object & { then(onfulfilled: infer F, ...args: infer _): any } // `await` only unwraps object types with a callable `then`. Non-object types are not unwrapped
+	? F extends (value: infer V, ...args: infer _) => any // if the argument to `then` is callable, extracts the first argument
+		? Awaited<V> // recursively unwrap the value
+		: never // the argument to `then` was not callable
+	: T; // non-object or non-thenable
+
 class MyPromise<T> implements Promise<T> {
 	private state: PromiseState = "pending";
 	private value: any;
@@ -36,7 +47,7 @@ class MyPromise<T> implements Promise<T> {
 	constructor(executor: PromiseCallback) {
 		const resolve: ResolveCallback = (value: T) => {
 			if (this.state !== "pending") return;
-			this.state = "fullfilled";
+			this.state = "fulfilled";
 			this.value = value;
 			this.runHandlers();
 		};
@@ -106,7 +117,7 @@ class MyPromise<T> implements Promise<T> {
 		}
 
 		this.handlers.forEach((handler) => {
-			if (this.state === "fullfilled") {
+			if (this.state === "fulfilled") {
 				if (!handler.onfulfilled) {
 					handler.resolve(this.value);
 				} else {
@@ -134,8 +145,97 @@ class MyPromise<T> implements Promise<T> {
 		});
 		this.handlers = [];
 	}
+
+	static resolve(): MyPromise<void>;
+	static resolve<T>(value: T): MyPromise<T>;
+	static resolve<T>(value: MyPromise<T>): MyPromise<MyAwaited<T>>;
+	static resolve<T>(value?: T): MyPromise<T | void> {
+		if (value instanceof MyPromise) {
+			return value;
+		}
+
+		return new MyPromise((resolve, reject) => {
+			// checking for thenable
+			if (
+				value !== null &&
+				typeof value === "object" &&
+				"then" in value &&
+				typeof (value as any).then === "function"
+			) {
+				(value as any).then(resolve, reject);
+			} else {
+				resolve(value as T | void);
+			}
+		});
+	}
+
+	static reject<T = never>(reason?: any): MyPromise<T> {
+		return new MyPromise((_, reject) => {
+			reject(reason);
+		});
+	}
+
+	static all<T = any>(values: (T | MyPromise<T>)[]): MyPromise<T[] | []> {
+		const promiseResults: any[] = [];
+		let resolvedPromises = 0;
+		return new MyPromise((resolve, reject) => {
+			if (values.length === 0) {
+				resolve([]);
+				return;
+			}
+
+			values.forEach((value, index) => {
+				MyPromise.resolve(value)
+					.then((result) => {
+						resolvedPromises++;
+						promiseResults[index] = result;
+						if (resolvedPromises === values.length) {
+							resolve(promiseResults);
+						}
+					})
+					.catch((reason) => {
+						reject(reason);
+					});
+			});
+		});
+	}
+
+	static allSettled<T = any>(
+		values: (T | MyPromise<T>)[]
+	): MyPromise<T[] | []> {
+		const promiseResults: any[] = [];
+		let resolvedPromises = 0;
+		return new MyPromise((resolve) => {
+			if (values.length === 0) {
+				resolve([]);
+				return;
+			}
+
+			values.forEach((value, index) => {
+				MyPromise.resolve(value)
+					.then((result) => {
+						promiseResults[index] = {
+							status: "fulfilled",
+							value: result,
+						};
+					})
+					.catch((reason) => {
+						promiseResults[index] = {
+							status: "rejected",
+							reason,
+						};
+					})
+					.finally(() => {
+						resolvedPromises++;
+						if (resolvedPromises === values.length) {
+							resolve(promiseResults);
+						}
+					});
+			});
+		});
+	}
 }
 
 new Promise<string>((resolve, reject) => {}).then();
 
-Promise;
+Promise.allSettled;
