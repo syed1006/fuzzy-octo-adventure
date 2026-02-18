@@ -10,12 +10,14 @@ type PromiseState = "pending" | "fulfilled" | "rejected";
 type OnFulfilled<T, TResult> =
 	| ((value: T) => TResult | PromiseLike<TResult>)
 	| null
-	| undefined;
+	| undefined
+	| unknown;
 
 type OnRejected<TResult> =
 	| ((reason: any) => TResult | PromiseLike<TResult>)
 	| null
-	| undefined;
+	| undefined
+	| unknown;
 
 type OnFinally = (() => unknown) | null | undefined;
 
@@ -66,7 +68,9 @@ class MyPromise<T> implements Promise<T> {
 				try {
 					(value as any).then(resolve, reject);
 				} catch (error) {
-					reject(error);
+					if (!locked) {
+						reject(error);
+					}
 				}
 				return;
 			}
@@ -77,7 +81,8 @@ class MyPromise<T> implements Promise<T> {
 		};
 
 		const reject: RejectCallback = (reason: unknown) => {
-			if (this.state !== "pending" || locked) return;
+			if (this.state !== "pending") return;
+			locked = true;
 			this.state = "rejected";
 			this.value = reason;
 			this.runHandlers();
@@ -139,29 +144,30 @@ class MyPromise<T> implements Promise<T> {
 		this.handlers = [];
 
 		handlers.forEach((handler) => {
+			const { onfulfilled, onrejected, resolve, reject } = handler;
 			queueMicrotask(() => {
 				if (this.state === "fulfilled") {
-					if (!handler.onfulfilled) {
-						handler.resolve(this.value);
+					if (typeof onfulfilled !== "function") {
+						resolve(this.value);
 					} else {
 						try {
-							const result = handler.onfulfilled(this.value);
-							handler.resolve(result);
+							const result = onfulfilled(this.value);
+							resolve(result);
 						} catch (error) {
-							handler.reject(error);
+							reject(error);
 						}
 					}
 				}
 
 				if (this.state === "rejected") {
-					if (!handler.onrejected) {
-						handler.reject(this.value);
+					if (typeof onrejected !== "function") {
+						reject(this.value);
 					} else {
 						try {
-							const result = handler.onrejected(this.value);
-							handler.resolve(result);
+							const result = onrejected(this.value);
+							resolve(result);
 						} catch (error) {
-							handler.reject(error);
+							reject(error);
 						}
 					}
 				}
@@ -197,7 +203,7 @@ class MyPromise<T> implements Promise<T> {
 
 			values.forEach((value, index) => {
 				MyPromise.resolve(value)
-					.then((result) => {
+					.then((result: any) => {
 						resolvedPromises++;
 						promiseResults[index] = result;
 						if (resolvedPromises === values.length) {
@@ -224,7 +230,7 @@ class MyPromise<T> implements Promise<T> {
 
 			values.forEach((value, index) => {
 				MyPromise.resolve(value)
-					.then((result) => {
+					.then((result: any) => {
 						promiseResults[index] = {
 							status: "fulfilled",
 							value: result,
