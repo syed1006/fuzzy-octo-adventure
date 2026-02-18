@@ -47,9 +47,8 @@ class MyPromise<T> implements Promise<T> {
 	readonly [Symbol.toStringTag]: string = "MyPromise";
 
 	constructor(executor: PromiseCallback) {
-		let locked = false;
 		const resolve: ResolveCallback = (value: T) => {
-			if (this.state !== "pending" || locked) return;
+			if (this.state !== "pending") return;
 
 			if ((value as any) === this) {
 				reject(
@@ -58,17 +57,30 @@ class MyPromise<T> implements Promise<T> {
 				return;
 			}
 
+			let called = false;
+
 			if (
 				value !== null &&
 				typeof value === "object" &&
 				"then" in value &&
 				typeof (value as any).then === "function"
 			) {
-				locked = true;
 				try {
-					(value as any).then(resolve, reject);
+					(value as any).then(
+						(v: any) => {
+							if (called) return;
+							called = true;
+							resolve(v);
+						},
+						(r: any) => {
+							if (called) return;
+							called = true;
+							reject(r);
+						}
+					);
 				} catch (error) {
-					if (!locked) {
+					if (!called) {
+						called = true;
 						reject(error);
 					}
 				}
@@ -82,7 +94,6 @@ class MyPromise<T> implements Promise<T> {
 
 		const reject: RejectCallback = (reason: unknown) => {
 			if (this.state !== "pending") return;
-			locked = true;
 			this.state = "rejected";
 			this.value = reason;
 			this.runHandlers();
