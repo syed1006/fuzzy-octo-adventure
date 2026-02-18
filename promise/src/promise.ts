@@ -57,34 +57,48 @@ class MyPromise<T> implements Promise<T> {
 				return;
 			}
 
-			let called = false;
+			if (value instanceof MyPromise) {
+				value.then(resolve, reject);
+				return;
+			}
 
 			if (
 				value !== null &&
 				typeof value === "object" &&
-				"then" in value &&
-				typeof (value as any).then === "function"
+				typeof value === "function"
 			) {
+				let then: any;
 				try {
-					(value as any).then(
-						(v: any) => {
-							if (called) return;
-							called = true;
-							resolve(v);
-						},
-						(r: any) => {
-							if (called) return;
-							called = true;
-							reject(r);
-						}
-					);
+					then = (value as any).then;
 				} catch (error) {
-					if (!called) {
-						called = true;
-						reject(error);
-					}
+					reject(error);
+					return;
 				}
-				return;
+				let called = false;
+				if (typeof then === "function") {
+					try {
+						then.call(
+							value,
+							(v: any) => {
+								if (called) return;
+								called = true;
+								resolve(v);
+							},
+							(r: any) => {
+								if (called) return;
+								called = true;
+								reject(r);
+							}
+						);
+					} catch (error) {
+						if (!called) {
+							called = true;
+							reject(error);
+						}
+					}
+					// allow chaining until the end
+					return;
+				}
 			}
 
 			this.state = "fulfilled";
